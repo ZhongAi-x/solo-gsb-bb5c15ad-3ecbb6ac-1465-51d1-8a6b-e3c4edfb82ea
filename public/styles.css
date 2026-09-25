@@ -607,6 +607,23 @@ main .btn:hover { background: var(--muted-bg); color: var(--ink); }
 .vchain-flow { padding: 4px 18px 16px; }
 .vchain-stop { color: var(--error); }
 
+/* ---------- 跨道具补签计划 ---------- */
+.panel-splan { margin-bottom: 16px; }
+.splan-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.splan-head h2 span { color: var(--brand); }
+#splan-stale { margin: 10px 18px 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+#splan-banner { margin: 10px 18px 0; }
+#splan-table, #splan-props-table { margin-top: 8px; }
+.splan-conflicts { padding: 0 18px; }
+.splan-readonly {
+  margin: 10px 18px 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 13px;
+}
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 980px) {
   .grid { grid-template-columns: 1fr; }

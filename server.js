@@ -17,6 +17,7 @@ const {
   applySignoff,
   verifiedChain,
 } = require('./src/signoff');
+const { buildSignoffPlan, MAX_BUDGET } = require('./src/signoff-plan');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -378,6 +379,28 @@ app.get('/api/verified-chain', (req, res) => {
     if (err.code === 'NOT_FOUND') return res.status(404).json({ error: err.message });
     throw err;
   }
+});
+
+/* ---------------- 跨道具补签计划（只读，即时规划，不写入任何签收 / 记录） ---------------- */
+
+app.get('/api/signoff-plan', (req, res) => {
+  let minute;
+  let budget;
+  try {
+    minute = parseMinute(req.query.minute, '截止分钟');
+    if (req.query.budget === undefined || req.query.budget === null || req.query.budget === '') {
+      throw new Error('补签额度不能为空');
+    }
+    budget = Number(req.query.budget);
+    if (!Number.isInteger(budget) || budget < 0 || budget > MAX_BUDGET) {
+      throw new Error(`补签额度必须是 0 到 ${MAX_BUDGET} 之间的整数（最多 ${MAX_BUDGET} 次补签）`);
+    }
+  } catch (err) {
+    return badRequest(res, err.message);
+  }
+
+  // 纯读取 + 即时重放规划，不写入任何数据；实际签收后由页面重新查询计算
+  res.json(buildSignoffPlan(store.getData(), minute, budget));
 });
 
 /* ---------------- 批量交接预演（预演不落盘，提交一次写入） ---------------- */

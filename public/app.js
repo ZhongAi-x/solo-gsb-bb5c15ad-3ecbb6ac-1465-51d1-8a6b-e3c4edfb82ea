@@ -9,6 +9,8 @@ let batchPreview = null; // 最近一次批量预演结果（含 previewId）
 let batchDirty = true;   // 批次行在预演后是否又被修改
 let signoffRecordId = null; // 当前签收弹窗对应的记录 id
 let signoffHash = null;     // 打开签收弹窗时服务端下发的记录内容指纹（提交时携带）
+let splanQuery = null;      // 最近一次补签计划的查询参数（用于实际签收后重新计算）
+let splanRev = null;        // 生成计划时的数据版本（数据变化后提示计划过期）
 
 const $ = (sel) => document.querySelector(sel);
 const els = {
@@ -115,6 +117,23 @@ const els = {
   vchainBlocker: $('#vchain-blocker'),
   vchainFlow: $('#vchain-flow'),
   btnVchainClose: $('#btn-vchain-close'),
+  // 跨道具补签计划
+  btnSignoffPlan: $('#btn-signoff-plan'),
+  splanDialog: $('#splan-dialog'),
+  splanForm: $('#splan-form'),
+  splanMinute: $('#splan-minute'),
+  splanBudget: $('#splan-budget'),
+  splanPanel: $('#splan-panel'),
+  splanMinuteLabel: $('#splan-minute-label'),
+  splanBudgetLabel: $('#splan-budget-label'),
+  splanStale: $('#splan-stale'),
+  btnSplanRecalc: $('#btn-splan-recalc'),
+  splanSummary: $('#splan-summary'),
+  splanBanner: $('#splan-banner'),
+  splanTableBody: document.querySelector('#splan-table tbody'),
+  splanPropsTableBody: document.querySelector('#splan-props-table tbody'),
+  splanConflicts: $('#splan-conflicts'),
+  btnSplanClose: $('#btn-splan-close'),
 };
 
 const STATUS_TEXT = {
@@ -142,8 +161,16 @@ async function api(url, options = {}) {
 }
 
 async function loadState() {
+  const prevRev = state && typeof state.rev === 'number' ? state.rev : null;
   state = await api('/api/state');
   render();
+  // 补签计划面板打开时，任何数据版本变化（实际签收 / 记录编辑）都使旧计划过期
+  if (
+    splanQuery && !els.splanPanel.classList.contains('hidden') &&
+    prevRev != null && state.rev !== prevRev && state.rev !== splanRev
+  ) {
+    els.splanStale.classList.remove('hidden');
+  }
 }
 
 /* ==================== 渲染：汇总 ==================== */
@@ -552,6 +579,25 @@ function bindEvents() {
   els.vchainFlow.addEventListener('click', (e) => {
     const link = e.target.closest?.('[data-record-id]');
     if (link) locateRecord(link.dataset.recordId);
+  });
+
+  // 跨道具补签计划（只读）
+  els.btnSignoffPlan.addEventListener('click', openSplanDialog);
+  els.splanForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    submitSplan();
+  });
+  els.btnSplanClose.addEventListener('click', () => els.splanPanel.classList.add('hidden'));
+  els.btnSplanRecalc.addEventListener('click', () => {
+    if (!splanQuery) return;
+    api(`/api/signoff-plan?minute=${splanQuery.minute}&budget=${splanQuery.budget}`)
+      .then((result) => renderSplanResult(result))
+      .catch((err) => toast(err.message, true));
+  });
+  // 待签列表 / 各道具计划中的记录链接：直接打开现有签收弹窗
+  els.splanPanel.addEventListener('click', (e) => {
+    const link = e.target.closest?.('[data-sign-record]');
+    if (link) openSignoffDialog(link.dataset.signRecord);
   });
 
   // 批量交接预演
@@ -1419,6 +1465,13 @@ async function submitSignoff() {
     toast(data.from && data.to ? '双方均已签收，本条交接已核实' : '签收成功，等待另一方确认');
     await loadState();          // 刷新记录表签收列
     renderSignoffDialog(data);  // 留在弹窗内，另一方可继续签收
+    // 补签计划面板打开时：实际签收后按原参数自动重新计算计划
+    if (splanQuery && !els.splanPanel.classList.contains('hidden')) {
+      try {
+        const plan = await api(`/api/signoff-plan?minute=${splanQuery.minute}&budget=${splanQuery.budget}`);
+        renderSplanResult(plan);
+      } catch { /* 重新计算失败时保留旧面板与过期提示 */ }
+    }
   } catch (err) {
     toast(err.message, true);
     if (err.status === 409 || err.status === 404) {
@@ -1550,6 +1603,149 @@ async function submitVchain() {
     els.vchainDialog.close();
     renderVchainResult(result);
     toast('已核实交接链查询完成（只读，未改动数据）');
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+/* ==================== 跨道具补签计划（只读） ==================== */
+
+function openSplanDialog() {
+  if (state.props.length === 0) {
+    toast('请先录入道具，再生成补签计划', true);
+    return;
+  }
+  els.splanMinute.value = state.verification.endMinute || 0;
+  els.splanBudget.value = 12;
+  els.splanDialog.showModal();
+  els.splanMinute.focus();
+}
+
+function splanRecordLink(item) {
+  return `<a class="resp-rec-link" data-sign-record="${esc(item.recordId)}" title="打开签收弹窗">${shortId(item.recordId)}</a>`;
+}
+
+function renderSplanResult(result) {
+  splanRev = result.rev;
+  els.splanMinuteLabel.textContent = result.minute;
+  els.splanBudgetLabel.textContent = result.budget;
+  els.splanStale.classList.add('hidden');
+
+  const chips = [
+    [`新增已核实 ${result.newVerifiedCount} 条`, result.newVerifiedCount > 0 ? 'chip-ok' : ''],
+    [`待签 ${result.pendingCount} 项`, result.pendingCount > 0 ? 'chip-bad' : 'chip-ok'],
+    [`涉及道具 ${result.plannedProps} 件`, ''],
+    [`额度消耗 ${result.budgetUsed} / ${result.budget}`, ''],
+    [`额度剩余 ${result.budgetRemaining}`, result.budgetRemaining > 0 ? 'chip-neutral' : ''],
+    [`链冲突道具 ${result.conflictProps.length} 件`, result.conflictProps.length > 0 ? 'chip-bad' : ''],
+  ];
+  els.splanSummary.innerHTML = chips
+    .map(([text, cls]) => `<span class="inv-chip ${cls}">${text}</span>`)
+    .join('');
+
+  if (result.pendingCount === 0) {
+    els.splanBanner.className = 'banner banner-ok';
+    els.splanBanner.textContent =
+      result.budget === 0
+        ? '补签额度为 0，未规划任何补签。'
+        : '当前没有可在额度内连续补齐的缺签记录（已核实前缀之外无链上缺签，或缺签记录无法在现有额度内整段补齐）。';
+    els.splanTableBody.innerHTML =
+      '<tr><td colspan="8" class="empty">没有待签项</td></tr>';
+  } else {
+    els.splanBanner.className = 'banner';
+    els.splanBanner.textContent =
+      `按「新增已核实记录总数最大 → 补签次数更少 → 待签列表字典序最小」选出的计划：` +
+      `完成下列 ${result.pendingCount} 项签收后，将新增 ${result.newVerifiedCount} 条已核实记录` +
+      `（已双方签收的记录不耗额度，自动延伸）。`;
+    els.splanTableBody.innerHTML = result.pendingItems.map((item, i) => `
+      <tr>
+        <td class="cell-minute">${i + 1}</td>
+        <td><strong>${esc(item.propName)}</strong></td>
+        <td class="cell-minute">第${item.minute}分</td>
+        <td>${esc(item.from)}</td>
+        <td>${esc(item.to)}</td>
+        <td>${item.side === 'from'
+          ? '<span class="inv-badge inv-neutral">交出者</span>'
+          : '<span class="inv-badge inv-ok">接收者</span>'}</td>
+        <td><strong>${esc(item.name)}</strong></td>
+        <td>${splanRecordLink(item)}</td>
+      </tr>`).join('');
+  }
+
+  els.splanPropsTableBody.innerHTML = result.props.map((p) => {
+    const prefix = p.verifiedPrefixLength;
+    const planned = p.plannedRecords
+      .map((r) => `<a class="resp-rec-link" data-sign-record="${esc(r.id)}" title="打开签收弹窗">${shortId(r.id)}</a>`)
+      .join('、');
+    let tailNote;
+    if (p.blocker) {
+      tailNote = `⚠ 第${p.blocker.conflict.minute}分钟原链冲突` +
+        `（${p.blocker.conflict.type === 'AMBIGUOUS' ? '多条可接续' : '断链'}）` +
+        (p.beyondConflictCount ? `，其后 ${p.beyondConflictCount} 条记录不得规划` : '') +
+        (p.unplannedTailRecords.length ? `；另有 ${p.unplannedTailRecords.length} 条链上缺签记录本次未覆盖` : '');
+    } else if (p.unplannedTailRecords.length) {
+      tailNote = `额度不足：${p.unplannedTailRecords.length} 条链上缺签记录本次未覆盖` +
+        '（需在已核实前缀延伸后连续补齐）';
+    } else if (p.tailLength === 0) {
+      tailNote = '<span class="inv-dash">窗口内记录均已核实</span>';
+    } else {
+      tailNote = '<span class="inv-dash">—</span>';
+    }
+    return `
+      <tr class="${p.newVerifiedCount > 0 ? 'inv-row-MATCH' : ''}">
+        <td><strong>${esc(p.propName)}</strong></td>
+        <td class="cell-minute">${prefix} 条</td>
+        <td class="cell-minute"><strong>${p.newVerifiedCount}</strong> 条</td>
+        <td class="cell-minute">${p.signoffCost} 次</td>
+        <td>${planned || '<span class="inv-dash">—</span>'}</td>
+        <td class="inv-note">${tailNote}</td>
+      </tr>`;
+  }).join('');
+
+  if (result.conflictProps.length === 0) {
+    els.splanConflicts.innerHTML = '';
+  } else {
+    els.splanConflicts.innerHTML = `
+      <div class="resp-und-head">⚠ 原链冲突道具（${result.conflictProps.length} 件）：首个冲突之后的记录不参与规划</div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>道具</th><th>冲突分钟</th><th>冲突类型</th><th>不可规划记录数</th><th>说明</th></tr></thead>
+          <tbody>${result.conflictProps.map((c) => `
+            <tr class="inv-row-UNKNOWN">
+              <td><strong>${esc(c.propName)}</strong></td>
+              <td class="cell-minute">第${c.minute}分</td>
+              <td>${c.type === 'AMBIGUOUS' ? '多条可接续（链不唯一）' : '无法接续（断链）'}</td>
+              <td class="cell-minute">${c.beyondConflictCount}</td>
+              <td class="inv-note">${esc(c.reason)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  els.splanPanel.classList.remove('hidden');
+  els.splanPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function submitSplan() {
+  const minute = Number(els.splanMinute.value);
+  const budget = Number(els.splanBudget.value);
+  if (!Number.isInteger(minute) || minute < 0) {
+    toast('截止分钟必须是不小于 0 的整数', true);
+    return;
+  }
+  if (!Number.isInteger(budget) || budget < 0 || budget > 12) {
+    toast('补签额度必须是 0 到 12 之间的整数', true);
+    return;
+  }
+  try {
+    const result = await api(
+      `/api/signoff-plan?minute=${minute}&budget=${budget}`
+    );
+    splanQuery = { minute, budget };
+    els.splanDialog.close();
+    renderSplanResult(result);
+    toast('补签计划已生成（只读，未改动任何数据）');
   } catch (err) {
     toast(err.message, true);
   }
