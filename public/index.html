@@ -25,6 +25,7 @@
         <button id="btn-appearance" class="btn">🎭 出场时段核对</button>
         <button id="btn-conflict-fix" class="btn btn-accent">🛠 冲突修复预演</button>
         <button id="btn-verified-chain" class="btn">✅ 已核实交接链</button>
+        <button id="btn-resign-plan" class="btn btn-accent">📝 跨道具补签计划</button>
         <button id="btn-reverify" class="btn" title="重新读取记录并按时间重放">↻ 重新核验</button>
       </div>
     </div>
@@ -118,6 +119,31 @@
       <div id="vchain-blocker" class="vchain-blocker"></div>
       <div class="resp-section-title">已核实链（按同分钟唯一链重放顺序，双方签收齐全才计入）</div>
       <div id="vchain-flow" class="vchain-flow"></div>
+    </section>
+
+    <!-- 跨道具补签计划结果（查询后即时展示，只读、不改写任何数据） -->
+    <section id="plan-panel" class="panel panel-plan hidden">
+      <div class="panel-head plan-head">
+        <h2>📝 跨道具补签计划 · 截止第 <span id="plan-minute-label">-</span> 分钟（含）· 补签额度 <span id="plan-quota-label">-</span> 次</h2>
+        <button type="button" class="btn btn-sm" id="btn-plan-close" title="关闭计划">✕ 关闭</button>
+      </div>
+      <div class="inv-summary" id="plan-summary"></div>
+      <div id="plan-banner-wrap"></div>
+      <div class="resp-section-title">各道具新增长度（按道具ID排序；每件道具只从当前已核实前缀起连续补齐，冲突之后的记录不规划）</div>
+      <div id="plan-props" class="plan-props"></div>
+      <div class="resp-section-title">待签列表（按道具ID、记录分钟、记录ID、签收方排序；点击记录可打开签收弹窗）</div>
+      <div class="table-wrap">
+        <table class="table" id="plan-table">
+          <thead>
+            <tr>
+              <th class="col-rowno">#</th><th>道具</th><th>分钟</th><th>交接</th>
+              <th>签收方</th><th>待签姓名</th><th>记录</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="plan-readonly">计划只读，不会写入任何签收；请在待签列表中逐条打开签收弹窗完成确认，实际签收后计划自动重新计算。</div>
     </section>
 
     <div class="grid">
@@ -396,6 +422,32 @@
       <div class="dialog-actions">
         <button type="button" class="btn" data-close>取消</button>
         <button type="submit" class="btn btn-primary">查询已核实链</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 跨道具补签计划查询弹窗 -->
+  <dialog id="plan-dialog" class="dialog">
+    <form method="dialog" id="plan-form">
+      <h3>跨道具补签计划</h3>
+      <p class="dialog-tip">
+        输入<strong>截止分钟（含）</strong>与<strong>补签额度（最多 12 次）</strong>：服务端按道具沿现有
+        <strong>同分钟唯一链</strong>重放并校验签收内容指纹，原链<strong>首个冲突之后</strong>的记录不参与规划；
+        每件道具只允许从<strong>当前已核实前缀</strong>起连续补齐，一条记录缺两侧消耗两次额度、
+        已有有效签收不耗额度。跨道具自动选择延伸前缀，使<strong>新增已核实记录总数最大</strong>
+        （同收益取补签次数更少、待签列表字典序更小的方案）。计划只读，实际签收后重新计算。
+      </p>
+      <label class="field">
+        <span>截止分钟（含） <em>*</em></span>
+        <input type="number" id="plan-minute" min="0" step="1" required placeholder="如 12" />
+      </label>
+      <label class="field">
+        <span>补签额度（0–12 次） <em>*</em></span>
+        <input type="number" id="plan-quota" min="0" max="12" step="1" required placeholder="如 12" />
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close>取消</button>
+        <button type="submit" class="btn btn-primary">计算补签计划</button>
       </div>
     </form>
   </dialog>

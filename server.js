@@ -17,6 +17,7 @@ const {
   applySignoff,
   verifiedChain,
 } = require('./src/signoff');
+const { planResign, MAX_QUOTA: MAX_RESIGN_QUOTA } = require('./src/resign-plan');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -378,6 +379,23 @@ app.get('/api/verified-chain', (req, res) => {
     if (err.code === 'NOT_FOUND') return res.status(404).json({ error: err.message });
     throw err;
   }
+});
+
+/* ---------------- 跨道具补签计划（只读，即时计算，不改写任何数据） ---------------- */
+
+app.get('/api/resign-plan', (req, res) => {
+  let minute;
+  let quota;
+  try {
+    minute = parseMinute(req.query.minute, '截止分钟');
+    quota = parseMinute(req.query.quota, '补签额度');
+    if (quota > MAX_RESIGN_QUOTA) throw new Error(`补签额度最多 ${MAX_RESIGN_QUOTA} 次`);
+  } catch (err) {
+    return badRequest(res, err.message);
+  }
+
+  // 纯读取 + 即时计算，不写入任何数据
+  res.json(planResign(store.getData(), minute, quota));
 });
 
 /* ---------------- 批量交接预演（预演不落盘，提交一次写入） ---------------- */

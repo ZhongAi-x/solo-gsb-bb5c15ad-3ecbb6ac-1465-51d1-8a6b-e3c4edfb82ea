@@ -607,6 +607,35 @@ main .btn:hover { background: var(--muted-bg); color: var(--ink); }
 .vchain-flow { padding: 4px 18px 16px; }
 .vchain-stop { color: var(--error); }
 
+/* ---------- 跨道具补签计划 ---------- */
+.panel-plan { margin-bottom: 16px; }
+.plan-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.plan-head h2 span { color: var(--brand); }
+.plan-banner { margin: 8px 18px 0; }
+.plan-props { padding: 4px 18px 8px; display: flex; flex-direction: column; gap: 8px; }
+.plan-prop-card {
+  border: 1px solid var(--line);
+  border-left: 5px solid #b6bcc7;
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: #fcfcfd;
+}
+.plan-prop-card.ok { border-left-color: var(--ok); background: #fcfefd; }
+.plan-prop-head { font-weight: 700; font-size: 13.5px; }
+.plan-prop-meta { color: var(--ink-soft); font-weight: 400; font-size: 12px; }
+.plan-prop-detail { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; }
+.plan-prop-rec { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; }
+.plan-prop-rec a { color: var(--accent); cursor: pointer; text-decoration: underline; }
+.plan-prop-none { color: #98a2b3; }
+.plan-readonly {
+  margin: 12px 18px 14px;
+  font-size: 12px;
+  color: var(--warn);
+  background: var(--warn-bg);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 980px) {
   .grid { grid-template-columns: 1fr; }
